@@ -6,16 +6,16 @@ import Data.Array ((..))
 import Data.Array (index) as Array
 import Data.UInt (UInt, pow, zshr, (.&.))
 import Data.UInt (toInt, fromInt) as UInt
--- import Data.Int (pow)
--- import Data.Int.Bits ((.&.), zshr)
 import Data.Char (toCharCode)
 import Data.String.CodeUnits (charAt)
-import Data.Tuple.Native (t5, T5, prj)
-import Data.Traversable (for_)
-import Data.Typelevel.Num (d0, d1, d2, d3, d4)
+import Data.Vec (Vec)
+import Data.Vec (fill) as Vec
+import Data.Traversable (for_, traverse, traverse_)
+import Data.Typelevel.Num (D5)
 import Control.Monad.ST (run) as ST
 import Control.Monad.ST.Ref (new, read, modify) as STRef
 import Partial.Unsafe (unsafePartial)
+
 
 
 -- | Represents a single base85 digit between `0` and `84`
@@ -28,7 +28,7 @@ type Base256 = UInt
 type Z85Char = Char
 
 -- | Represents a 32-bit word encoded as 5 z85 characters
-type Z85Chunk = T5 Z85Char Z85Char Z85Char Z85Char Z85Char
+type Z85Chunk = Vec D5 Z85Char
 
 
 -- | Sorted by their value in the z85 encoding
@@ -85,7 +85,7 @@ encodeWord word =
             idx :: Base85
             idx = (value `div` divisor) `mod` UInt.fromInt 85
         in  lookupZ85Char idx
-  in  t5 (getChar 4) (getChar 3) (getChar 2) (getChar 1) (getChar 0)
+  in  Vec.fill getChar
 
 
 decodeWord :: Z85Chunk -> Maybe UInt
@@ -96,11 +96,7 @@ decodeWord chunk = case mBase256Values of
         value = ST.run do
           valueRef <- STRef.new (UInt.fromInt 0)
           let addPartValue part = void (STRef.modify (\val -> (val * UInt.fromInt 85) + part) valueRef)
-          addPartValue (prj d0 base256Values)
-          addPartValue (prj d1 base256Values)
-          addPartValue (prj d2 base256Values)
-          addPartValue (prj d3 base256Values)
-          addPartValue (prj d4 base256Values)
+          traverse_ addPartValue base256Values
           STRef.read valueRef
         divisor :: Int -> UInt
         divisor n = UInt.fromInt 256 `pow` UInt.fromInt n
@@ -114,12 +110,8 @@ decodeWord chunk = case mBase256Values of
             in  void (STRef.modify go wordRef)
           STRef.read wordRef
   where
-    mBase256Values :: Maybe (T5 Base256 Base256 Base256 Base256 Base256)
-    mBase256Values = t5 <$> lookupBase256 (prj d0 chunk)
-                        <*> lookupBase256 (prj d1 chunk)
-                        <*> lookupBase256 (prj d2 chunk)
-                        <*> lookupBase256 (prj d3 chunk)
-                        <*> lookupBase256 (prj d4 chunk)
+    mBase256Values :: Maybe (Vec D5 Base256)
+    mBase256Values = traverse lookupBase256 chunk
 
 
 
