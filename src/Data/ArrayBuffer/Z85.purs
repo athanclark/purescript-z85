@@ -13,16 +13,16 @@ import Data.ArrayBuffer.Z85.Internal (Base256, lookupBase256)
 -- encodeZ85 :: Uint32Array -> String
 -- encodeZ85 xs = ...
 
-decodeZ85 :: String -> Maybe Uint32Array
-decodeZ85 s =
-  if Array.length cs `mod` 5 == 0
-    then Array.foldM go [] cs
-    else Nothing
-  where
-    go :: Uint8Array -> Char -> Maybe Uint8Array
-    go acc c = case lookupBase256 c of
-      Nothing -> pure Nothing
-      Just base256Value ->
+-- decodeZ85 :: String -> Maybe Uint32Array
+-- decodeZ85 s =
+--   if Array.length cs `mod` 5 == 0
+--     then Array.foldM go [] cs
+--     else Nothing
+--   where
+--     go :: Uint8Array -> Char -> Maybe Uint8Array
+--     go acc c = case lookupBase256 c of
+--       Nothing -> pure Nothing
+--       Just base256Value ->
 
-    cs :: Array Char
-    cs = toCharArray s
+--     cs :: Array Char
+--     cs = toCharArray s

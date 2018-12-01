@@ -2,20 +2,31 @@ module Data.ArrayBuffer.Z85.Internal where
 
 import Prelude
 import Data.Maybe (Maybe (..))
-import Data.Array (unsafeIndex) as Array
+import Data.Array ((..))
+import Data.Array (index) as Array
+import Data.Int (pow)
+import Data.Int.Bits ((.&.), zshr)
 import Data.Char (toCharCode)
 import Data.String.CodeUnits (charAt)
+import Data.Tuple.Native (t5, T5, prj)
+import Data.Traversable (for_)
+import Data.Typelevel.Num (d0, d1, d2, d3, d4)
+import Control.Monad.ST (run) as ST
+import Control.Monad.ST.Ref (new, read, modify) as STRef
 import Partial.Unsafe (unsafePartial)
 
 
 -- | Represents a single base85 digit between `0` and `84`
 type Base85 = Int
 
--- | Represents a single base256 digit between `0x00` and `0xFF`
+-- | Represents a single base256 digit between `0x00` and `0xFF` - a Byte
 type Base256 = Int
 
 -- | Character included in the z85 character set: `0-9`, `a-z`, `A-Z`, and `:+=^!/*?&<>()[]{}@%$#`
 type Z85Char = Char
+
+-- | Represents a 32-bit word encoded as 5 z85 characters
+type Z85Chunk = T5 Z85Char Z85Char Z85Char Z85Char Z85Char
 
 
 -- | Sorted by their value in the z85 encoding
@@ -23,8 +34,8 @@ z85Chars :: String
 z85Chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#"
 
 
-lookupz85Char :: Base85 -> Z85Char
-lookupz85Char idx = unsafePartial $ case charAt idx z85Chars of
+lookupZ85Char :: Base85 -> Z85Char
+lookupZ85Char idx = unsafePartial $ case charAt idx z85Chars of
   Just c -> c
 
 
@@ -49,3 +60,52 @@ charCodeToBase256 =
 
 lookupBase256 :: Z85Char -> Maybe Base256
 lookupBase256 c = Array.index charCodeToBase256 (toCharCode c - 32)
+
+
+-- | Encodes the value by extracting it out of a little-endian packed word, and packing it into five x85 chars
+encodeWord :: Int -> Z85Chunk
+encodeWord word =
+  let value = ST.run do
+        valueRef <- STRef.new 0
+        for_ (0 .. 3) \j ->
+          let byteChunk :: Base256
+              byteChunk = (word `zshr` (8 * (4 - j - 1))) .&. 0xFF
+          in  void (STRef.modify (\val -> (val * 256) + byteChunk) valueRef)
+        STRef.read valueRef
+      getChar n =
+        let divisor = 85 `pow` n
+            idx :: Base85
+            idx = (value `div` divisor) `mod` 85
+        in  lookupZ85Char idx
+  in  t5 (getChar 4) (getChar 3) (getChar 2) (getChar 1) (getChar 0)
+
+
+decodeWord :: Z85Chunk -> Maybe Int
+decodeWord chunk = case mBase256Values of
+  Nothing -> Nothing
+  Just base256Values ->
+    let value = ST.run do
+          valueRef <- STRef.new 0
+          let addPartValue part = void (STRef.modify (\val -> (val * 85) + part) valueRef)
+          addPartValue (prj d0 base256Values)
+          addPartValue (prj d1 base256Values)
+          addPartValue (prj d2 base256Values)
+          addPartValue (prj d3 base256Values)
+          addPartValue (prj d4 base256Values)
+          STRef.read valueRef
+        divisor n = 256 `pow` n
+    in  Just $ ST.run do
+          wordRef <- STRef.new 0
+          for_ (3 .. 0) \n ->
+            void (STRef.modify (\word -> (word * 256) + ((value `div` divisor n) `mod` 256)) wordRef)
+          STRef.read wordRef
+  where
+    mBase256Values :: Maybe (T5 Base256 Base256 Base256 Base256 Base256)
+    mBase256Values = t5 <$> lookupBase256 (prj d0 chunk)
+                        <*> lookupBase256 (prj d1 chunk)
+                        <*> lookupBase256 (prj d2 chunk)
+                        <*> lookupBase256 (prj d3 chunk)
+                        <*> lookupBase256 (prj d4 chunk)
+
+
+
