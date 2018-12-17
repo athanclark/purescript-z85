@@ -35,8 +35,8 @@ main = do
   quickCheck charTest
   log "  - word serialization isomorphism"
   quickCheckGen wordTest
-  -- log "  - sentence serialization isomorphism"
-  -- quickCheckGen sentenceTest
+  log "  - sentence serialization isomorphism"
+  quickCheckGen sentenceTest
 
 
 charTest :: Z85Char -> Result
@@ -48,9 +48,9 @@ wordTest = do
   x <- genUWord
   pure (x === decodeWord (encodeWord x))
 
-sentenceTest :: Gen Boolean
+sentenceTest :: Gen Result
 sentenceTest = do
   xs <- genTypedArray 10 Nothing genUWord
-  let round1 = encodeZ85 xs
-      round2 = unsafePerformEffect (encodeZ85 <$> decodeZ85 round1)
-  pure (round1 == round2)
+  let round1 = unsafePerformEffect (encodeZ85 xs)
+      round2 = unsafePerformEffect (encodeZ85 =<< decodeZ85 round1)
+  pure (round1 === round2)

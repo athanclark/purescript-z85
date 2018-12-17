@@ -1,6 +1,6 @@
 module Data.ArrayBuffer.Z85 where
 
-import Data.ArrayBuffer.Z85.Internal (encodeWord, decodeWord, Z85Char (..), getZ85Char)
+import Data.ArrayBuffer.Z85.Internal (encodeWord, decodeWord, Z85Char (..), getZ85Char, Z85Chunk)
 
 import Prelude
 import Data.Maybe (Maybe (..))
@@ -8,29 +8,46 @@ import Data.Tuple (Tuple (..))
 import Data.Vec (toArray, fromArray) as Vec
 import Data.UInt (UInt)
 import Data.Array (snoc, length, foldM) as Array
+import Data.Array ((..))
 import Data.ArrayBuffer.ArrayBuffer (empty) as AB
 import Data.ArrayBuffer.Types (Uint32Array, Uint32)
 import Data.ArrayBuffer.Typed as TA
 import Data.ArrayBuffer.DataView as DV
 import Data.String.CodeUnits (toCharArray)
 import Data.String.Yarn (fromChars)
+import Data.String (length) as String
+import Data.Traversable (traverse_)
 import Effect (Effect)
+import Effect.Ref as Ref
 import Effect.Exception (throw)
+import Partial.Unsafe (unsafePartial)
 
 
 
-encodeZ85 :: Uint32Array -> String
-encodeZ85 xs =
-  -- let xs = dataView xs'
-  --     len = byteLength xs
-  -- in  if len == 0 then pure ""
+encodeZ85 :: Uint32Array -> Effect String
+encodeZ85 xs' = do
+  let buffer = TA.buffer xs'
+      bytes = DV.whole buffer
+      len = DV.byteLength bytes
+      len' = len `div` 4
+      ns = 0 .. (len' - 1)
+  sRef <- Ref.new ""
+  let go n' = do
+        let n = n' * 4
+        mX <- DV.get (DV.DVProxy :: DV.DVProxy Uint32 DV.BE) bytes n
+        unsafePartial $ case mX of
+          Just word ->
+            let word' :: Array Char
+                word' = getZ85Char <$> Vec.toArray (encodeWord word)
+            in  void (Ref.modify (\acc -> acc <> fromChars word') sRef)
+  traverse_ go ns
+  Ref.read sRef
+
+  --  if len == 0 then pure ""
   --     else
-  let go :: String -> UInt -> TA.Offset -> String
-      go acc word _ =
-        let word' :: Array Char
-            word' = getZ85Char <$> Vec.toArray (encodeWord word)
-        in  acc <> fromChars word'
-  in  TA.foldl go "" xs
+  -- let go :: String -> UInt -> TA.Offset -> String
+  --     go acc word _ =
+  -- in  TA.foldl go "" xs
 
 
 decodeZ85 :: String -> Effect Uint32Array
@@ -38,28 +55,34 @@ decodeZ85 s =
   if charsLen `mod` 5 /= 0
     then throw "Serialized string is not multiple of 5"
     else do
-      let buffer = AB.empty bytesLen
+      byteOffsetRef <- Ref.new 0
+      charsSoFarRef <- Ref.new []
 
-          bytes = DV.whole buffer
+      let go :: Char -> Effect Unit
+          go c = do
+            charsSoFar <- Ref.modify (\cs' -> cs' `Array.snoc` Z85Char c) charsSoFarRef
+            if Array.length charsSoFar /= 5
+              then pure unit
+              else do
+                let asVec :: Z85Chunk
+                    asVec = unsafePartial $ case Vec.fromArray charsSoFar of
+                      Just v -> v
 
-          go :: Tuple Int (Array Z85Char) -> Char -> Effect (Tuple Int (Array Z85Char))
-          go (Tuple byteOffset charsSoFar) c
-            | Array.length charsSoFar /= 5 = pure $ Tuple byteOffset $ charsSoFar `Array.snoc` Z85Char c
-            | otherwise = do
-                asVec <- case Vec.fromArray charsSoFar of
-                  Just cs -> pure cs
-                  Nothing -> throw $ "Couldn't convert characters scanned so far to sized vector: "
-                                <> show charsSoFar
-                let word = decodeWord asVec
-                DV.set (DV.DVProxy :: DV.DVProxy Uint32 DV.LE) bytes word byteOffset
-                pure (Tuple (byteOffset + 4) [])
+                byteOffset <- Ref.read byteOffsetRef
+                DV.set (DV.DVProxy :: DV.DVProxy Uint32 DV.BE) bytes (decodeWord asVec) byteOffset
 
-      void (Array.foldM go (Tuple 0 []) cs)
+                Ref.write (byteOffset + 4) byteOffsetRef
+                Ref.write [] charsSoFarRef
+
+      traverse_ go cs
       pure (TA.whole buffer)
   where
     cs :: Array Char
     cs = toCharArray s
 
-    charsLen = Array.length cs
+    buffer = AB.empty bytesLen
+    bytes = DV.whole buffer
+
+    charsLen = String.length s
     wordsLen = charsLen `div` 5
     bytesLen = wordsLen * 4
