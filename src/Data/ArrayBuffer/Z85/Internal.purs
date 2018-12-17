@@ -109,7 +109,7 @@ encodeWord word =
       getChar :: Int -> Z85Char
       getChar n =
         let divisor :: UInt
-            divisor = UInt.fromInt 85 `pow` UInt.fromInt n
+            divisor = UInt.fromInt 85 `pow` UInt.fromInt (4 - n)
             idx :: Base85
             idx = (value `div` divisor) `mod` UInt.fromInt 85
         in  lookupZ85Char idx
