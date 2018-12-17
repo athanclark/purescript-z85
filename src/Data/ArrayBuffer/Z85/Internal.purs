@@ -1,6 +1,8 @@
 module Data.ArrayBuffer.Z85.Internal where
 
 import Prelude
+  ( map, (<$>), (<<<), ($), bind, class Eq, class Show, (-), (*), (+), void, discard
+  , mod, div)
 import Data.Maybe (Maybe (..))
 import Data.Array ((..))
 import Data.Array (index, unsafeIndex) as Array
