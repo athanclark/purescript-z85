@@ -26,15 +26,14 @@ import Partial.Unsafe (unsafePartial)
 
 encodeZ85 :: Uint32Array -> Effect String
 encodeZ85 xs' = do
-  let buffer = TA.buffer xs'
-      bytes = DV.whole buffer
+  let bytes = TA.dataView xs'
       len = DV.byteLength bytes
       len' = len `div` 4
       ns = 0 .. (len' - 1)
   sRef <- Ref.new ""
   let go n' = do
         let n = n' * 4
-        mX <- DV.get (DV.DVProxy :: DV.DVProxy Uint32 DV.BE) bytes n
+        mX <- DV.getUint32be bytes n
         unsafePartial $ case mX of
           Just word ->
             let word' :: Array Char
@@ -58,7 +57,10 @@ decodeZ85 s =
       byteOffsetRef <- Ref.new 0
       charsSoFarRef <- Ref.new []
 
-      let go :: Char -> Effect Unit
+      buffer <- AB.empty bytesLen
+      let bytes = DV.whole buffer
+
+          go :: Char -> Effect Unit
           go c = do
             charsSoFar <- Ref.modify (\cs' -> cs' `Array.snoc` Z85Char c) charsSoFarRef
             if Array.length charsSoFar /= 5
@@ -69,19 +71,16 @@ decodeZ85 s =
                       Just v -> v
 
                 byteOffset <- Ref.read byteOffsetRef
-                DV.set (DV.DVProxy :: DV.DVProxy Uint32 DV.BE) bytes (decodeWord asVec) byteOffset
+                DV.setUint32be bytes (decodeWord asVec) byteOffset
 
                 Ref.write (byteOffset + 4) byteOffsetRef
                 Ref.write [] charsSoFarRef
 
       traverse_ go cs
-      pure (TA.whole buffer)
+      pure (TA.asUint32Array bytes)
   where
     cs :: Array Char
     cs = toCharArray s
-
-    buffer = AB.empty bytesLen
-    bytes = DV.whole buffer
 
     charsLen = String.length s
     wordsLen = charsLen `div` 5
