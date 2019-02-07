@@ -86,12 +86,12 @@ charCodeToBase85 = map UInt.fromInt
     nan' = unsafeCoerce nan
 
 
-z85CharToIndex :: Z85Char -> Int
-z85CharToIndex (Z85Char c) = toCharCode c - 32
-
 
 lookupBase85 :: Z85Char -> Base85
 lookupBase85 c = unsafePartial (Array.unsafeIndex charCodeToBase85 (z85CharToIndex c))
+  where
+    z85CharToIndex :: Z85Char -> Int
+    z85CharToIndex (Z85Char c) = toCharCode c - 32
 
 
 -- | Encodes the value by extracting it out of a little-endian packed word, and packing it into five x85 chars

@@ -11,7 +11,7 @@ import Data.UInt as UInt
 import Data.Int (rem, toNumber)
 import Data.ArrayBuffer.Types (Uint32Array)
 import Data.ArrayBuffer.Typed (fromArray)
-import Data.ArrayBuffer.Typed.Gen (genTypedArray, genUWord)
+import Data.ArrayBuffer.Typed.Gen (genTypedArray, genUint32)
 import Data.Array (dropEnd, length) as Array
 import Data.Array ((..))
 import Effect (Effect)
@@ -45,12 +45,12 @@ charTest c = lookupZ85Char (lookupBase85 c) === c
 
 wordTest :: Gen Result
 wordTest = do
-  x <- genUWord
+  x <- genUint32
   pure (x === decodeWord (encodeWord x))
 
 sentenceTest :: Gen Result
 sentenceTest = do
-  xs <- genTypedArray 10 Nothing genUWord
+  xs <- genTypedArray genUint32
   let round1 = unsafePerformEffect (encodeZ85 xs)
       round2 = unsafePerformEffect (encodeZ85 =<< decodeZ85 round1)
   pure (round1 === round2)

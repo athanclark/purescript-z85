@@ -8,7 +8,7 @@
   ],
   "dependencies": {
     "purescript-prelude": "^4.1.0",
-    "purescript-arraybuffer": "git://github.com/athanclark/purescript-arraybuffer.git#1d1e709d5b1a0072bd7d5b1bf5490deed322f0c9",
+    "purescript-arraybuffer": "git://github.com/athanclark/purescript-arraybuffer.git#ebd2b1045a05ee59ccb7c6ed16521485b3e54886",
     "purescript-sized-vectors": "^3.1.0",
     "purescript-yarn": "^4.0.0",
     "purescript-numbers": "^6.0.0"

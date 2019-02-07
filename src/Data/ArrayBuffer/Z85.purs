@@ -3,14 +3,14 @@ module Data.ArrayBuffer.Z85 where
 import Data.ArrayBuffer.Z85.Internal (encodeWord, decodeWord, Z85Char (..), getZ85Char, Z85Chunk)
 
 import Prelude
-import Data.Maybe (Maybe (..))
+import Data.Maybe (Maybe (..), fromJust)
 import Data.Tuple (Tuple (..))
 import Data.Vec (toArray, fromArray) as Vec
 import Data.UInt (UInt)
 import Data.Array (snoc, length, foldM) as Array
 import Data.Array ((..))
 import Data.ArrayBuffer.ArrayBuffer (empty) as AB
-import Data.ArrayBuffer.Types (Uint32Array, Uint32)
+import Data.ArrayBuffer.Types (Uint32Array, Uint32, DataView)
 import Data.ArrayBuffer.Typed as TA
 import Data.ArrayBuffer.DataView as DV
 import Data.String.CodeUnits (toCharArray)
@@ -26,7 +26,7 @@ import Partial.Unsafe (unsafePartial)
 
 encodeZ85 :: Uint32Array -> Effect String
 encodeZ85 xs' = do
-  let bytes = TA.dataView xs'
+  let bytes = DV.whole (TA.buffer xs')
       len = DV.byteLength bytes
       len' = len `div` 4
       ns = 0 .. (len' - 1)
@@ -34,11 +34,10 @@ encodeZ85 xs' = do
   let go n' = do
         let n = n' * 4
         mX <- DV.getUint32be bytes n
-        unsafePartial $ case mX of
-          Just word ->
-            let word' :: Array Char
-                word' = getZ85Char <$> Vec.toArray (encodeWord word)
-            in  void (Ref.modify (\acc -> acc <> fromChars word') sRef)
+        let word = unsafePartial (fromJust mX)
+            word' :: Array Char
+            word' = getZ85Char <$> Vec.toArray (encodeWord word)
+        void (Ref.modify (\acc -> acc <> fromChars word') sRef)
   traverse_ go ns
   Ref.read sRef
 
@@ -58,7 +57,8 @@ decodeZ85 s =
       charsSoFarRef <- Ref.new []
 
       buffer <- AB.empty bytesLen
-      let bytes = DV.whole buffer
+      let bytes :: DataView
+          bytes = DV.whole buffer
 
           go :: Char -> Effect Unit
           go c = do
@@ -67,17 +67,16 @@ decodeZ85 s =
               then pure unit
               else do
                 let asVec :: Z85Chunk
-                    asVec = unsafePartial $ case Vec.fromArray charsSoFar of
-                      Just v -> v
+                    asVec = unsafePartial $ fromJust $ Vec.fromArray charsSoFar
 
                 byteOffset <- Ref.read byteOffsetRef
-                DV.setUint32be bytes (decodeWord asVec) byteOffset
+                void $ DV.setUint32be bytes byteOffset $ decodeWord asVec
 
                 Ref.write (byteOffset + 4) byteOffsetRef
                 Ref.write [] charsSoFarRef
 
       traverse_ go cs
-      pure (TA.asUint32Array bytes)
+      TA.whole buffer
   where
     cs :: Array Char
     cs = toCharArray s
