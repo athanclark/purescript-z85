@@ -6,12 +6,18 @@
     "bower_components",
     "output"
   ],
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/athanclark/purescript-z85.git"
+  },
   "dependencies": {
     "purescript-prelude": "^4.1.0",
-    "purescript-arraybuffer": "git://github.com/athanclark/purescript-arraybuffer.git#redesign",
+    "purescript-arraybuffer": "^10.0.0",
     "purescript-sized-vectors": "^3.1.0",
     "purescript-yarn": "^4.0.0",
-    "purescript-numbers": "^6.0.0"
+    "purescript-numbers": "^6.0.0",
+    "purescript-stringutils": "^0.0.8"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",

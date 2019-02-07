@@ -1,89 +1,63 @@
 module Data.ArrayBuffer.Z85 where
 
-import Data.ArrayBuffer.Z85.Internal (encodeWord, decodeWord, Z85Char (..), getZ85Char, Z85Chunk, z85Chars)
+import Data.ArrayBuffer.Z85.Internal (encodeWord, decodeWord, Z85Char (..), getZ85Char, Z85Chunk, inZ85Charset)
 
 import Prelude
-  ( div, bind, (<>), ($), (*), (-), (+), mod, (<$>), (/=), void, Unit, discard, not, show
-  , otherwise, (==), pure, unit)
+  ( bind, (<>), mod, (<$>), (/=), void, Unit, discard
+  , otherwise, (==), pure, not)
 import Data.Maybe (Maybe (..))
-import Data.Tuple (Tuple (..))
 import Data.Vec (toArray, fromArray) as Vec
 import Data.UInt (UInt)
-import Data.Array (snoc, length, foldM) as Array
-import Data.Array ((..))
-import Data.ArrayBuffer.ArrayBuffer (empty) as AB
-import Data.ArrayBuffer.Types (Uint32Array, Uint32)
-import Data.ArrayBuffer.Typed (buffer, whole) as TA
-import Data.ArrayBuffer.DataView (whole, byteLength, get, set, DVProxy (..), BE) as DV
+import Data.Array (cons) as Array
+import Data.ArrayBuffer.Types (Uint32Array, Uint8Array)
+import Data.ArrayBuffer.Typed as TA
 import Data.String.CodeUnits (toCharArray)
 import Data.String.Yarn (fromChars)
 import Data.String (length) as String
-import Data.String (contains, Pattern (..))
-import Data.Traversable (traverse_)
+import Data.String.CodeUnits (splitAt) as String
 import Effect (Effect)
-import Effect.Ref (read, modify, new, write) as Ref
+import Effect.Ref (read, modify, new) as Ref
 import Effect.Exception (throw)
 import Partial.Unsafe (unsafePartial)
 
 
 
 encodeZ85 :: Uint32Array -> Effect String
-encodeZ85 xs' = do
-  sRef <- Ref.new ""
-  let go n' = do
-        let n = n' * 4
-        mX <- DV.get (DV.DVProxy :: DV.DVProxy Uint32 DV.BE) bytes n
-        unsafePartial $ case mX of
-          Just word ->
-            let word' :: Array Char
-                word' = getZ85Char <$> Vec.toArray (encodeWord word)
-            in  void (Ref.modify (\acc -> acc <> fromChars word') sRef)
-  traverse_ go ns
+encodeZ85 xs = do
+  sRef <- Ref.new "" -- result string reference
+  let go :: UInt -> Effect Unit -- takes word
+      go word' = do
+        word <- do
+          (tmp :: Uint32Array) <- TA.fromArray [word']
+          (tmp' :: Uint8Array) <- TA.whole (TA.buffer tmp)
+          TA.reverse tmp' -- endian reversal
+          unsafePartial (TA.unsafeAt tmp 0)
+        let chunk :: Array Char
+            chunk = getZ85Char <$> Vec.toArray (encodeWord word)
+            go' acc = acc <> fromChars chunk -- content reversal
+        void (Ref.modify go' sRef)
+  TA.traverse_ go xs
   Ref.read sRef
-  where
-    buffer = TA.buffer xs'
-    bytes = DV.whole buffer
-    len = DV.byteLength bytes
-    len' = len `div` 4
-    ns = 0 .. (len' - 1)
 
 
 decodeZ85 :: String -> Effect Uint32Array
-decodeZ85 s =
-  if charsLen `mod` 5 /= 0
-    then throw "Serialized string is not multiple of 5"
-    else do
-      byteOffsetRef <- Ref.new 0
-      charsSoFarRef <- Ref.new []
-
-      let go :: Char -> Effect Unit
-          go c
-            | not (contains (Pattern (fromChars [c])) z85Chars) =
-              throw $ "Character not in z85 character set: " <> show c
-            | otherwise = do
-              charsSoFar <- Ref.modify (\cs' -> cs' `Array.snoc` Z85Char c) charsSoFarRef
-              if Array.length charsSoFar == 5
-                then do
-                  let asVec :: Z85Chunk
-                      asVec = unsafePartial $ case Vec.fromArray charsSoFar of
-                        Just v -> v
-
-                  byteOffset <- Ref.read byteOffsetRef
-                  DV.set (DV.DVProxy :: DV.DVProxy Uint32 DV.BE) bytes (decodeWord asVec) byteOffset
-
-                  Ref.write (byteOffset + 4) byteOffsetRef
-                  Ref.write [] charsSoFarRef
-                else pure unit
-
-      traverse_ go cs
-      pure (TA.whole buffer)
+decodeZ85 s = do
+  chunks <- asChunks s
+  do  (x :: Uint32Array) <- TA.fromArray (decodeWord <$> chunks)
+      TA.reverse x -- content reversal
+      (tmp :: Uint8Array) <- TA.whole (TA.buffer x)
+      TA.reverse tmp -- endian reversal
+      pure x
   where
-    cs :: Array Char
-    cs = toCharArray s
-
-    buffer = AB.empty bytesLen
-    bytes = DV.whole buffer
-
-    charsLen = String.length s
-    wordsLen = charsLen `div` 5
-    bytesLen = wordsLen * 4
+    asChunks :: String -> Effect (Array Z85Chunk)
+    asChunks xs
+      | xs == "" = pure []
+      | not (inZ85Charset xs) = throw "Not in z85 character set"
+      | String.length xs `mod` 5 /= 0 = throw "Characters not a modulo of five"
+      | otherwise = do
+        let {before,after} = String.splitAt 5 xs
+        chunk <- case Vec.fromArray (toCharArray before) of
+          Nothing -> throw ("Can't turn array into chunk: " <> before)
+          Just x -> pure (Z85Char <$> x)
+        tail <- asChunks after
+        pure (Array.cons chunk tail)

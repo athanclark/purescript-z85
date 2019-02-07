@@ -2,19 +2,23 @@ module Data.ArrayBuffer.Z85.Internal where
 
 import Prelude
   ( map, (<$>), (<<<), ($), bind, class Eq, class Show, (-), (*), (+), void, discard
-  , mod, div)
+  , mod, div, (<>))
 import Data.Maybe (Maybe (..))
+import Data.Either (Either (Right))
 import Data.Array ((..))
-import Data.Array (index, unsafeIndex) as Array
+import Data.Array (unsafeIndex) as Array
 import Data.UInt (UInt, pow, zshr, (.&.))
 import Data.UInt (toInt, fromInt) as UInt
 import Data.Number (nan)
 import Data.Char (toCharCode)
 import Data.String.CodeUnits (charAt)
 import Data.String.Yarn (toChars) as String
+import Data.String.Regex (regex, test)
+import Data.String.Regex.Flags (global)
+import Data.String.Utils (escapeRegex)
 import Data.Vec (Vec)
 import Data.Vec (fill) as Vec
-import Data.Traversable (for_, traverse, traverse_)
+import Data.Traversable (for_, traverse_)
 import Data.Typelevel.Num (D5)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
@@ -58,6 +62,14 @@ z85Chars :: String
 z85Chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#"
 
 
+inZ85Charset :: String -> Boolean
+inZ85Charset = test r
+  where
+    r' = "([a-zA-Z0-9]|" <> "[" <> escapeRegex ".-:+=^!/*?&<>()[]{}@%$#" <> "])+"
+    r = unsafePartial $ case regex r' global of
+      Right y -> y
+
+
 allZ85Chars :: Array Z85Char
 allZ85Chars = Z85Char <$> String.toChars z85Chars
 
@@ -71,27 +83,29 @@ lookupZ85Char idx = Z85Char $ unsafePartial $ case charAt (UInt.toInt idx) z85Ch
 -- | the equivalent of `"n".charCodeAt(0) - 32` in JavaScript, where `n` is some x85 character.
 charCodeToBase85 :: Array Base85
 charCodeToBase85 = map UInt.fromInt
-  [ unsafeCoerce nan, 0x44, unsafeCoerce nan, 0x54, 0x53, 0x52, 0x48, unsafeCoerce nan
-  , 0x4B, 0x4C, 0x46, 0x41, unsafeCoerce nan, 0x3F, 0x3E, 0x45
+  [ nan', 0x44, nan', 0x54, 0x53, 0x52, 0x48, nan'
+  , 0x4B, 0x4C, 0x46, 0x41, nan', 0x3F, 0x3E, 0x45
   , 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07
-  , 0x08, 0x09, 0x40, unsafeCoerce nan, 0x49, 0x42, 0x4A, 0x47
+  , 0x08, 0x09, 0x40, nan', 0x49, 0x42, 0x4A, 0x47
   , 0x51, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A
   , 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32
   , 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A
-  , 0x3B, 0x3C, 0x3D, 0x4D, unsafeCoerce nan, 0x4E, 0x43, unsafeCoerce nan
-  , unsafeCoerce nan, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
+  , 0x3B, 0x3C, 0x3D, 0x4D, nan', 0x4E, 0x43, nan'
+  , nan', 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
   , 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18
   , 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
-  , 0x21, 0x22, 0x23, 0x4F, unsafeCoerce nan, 0x50, 0x00, 0x00
+  , 0x21, 0x22, 0x23, 0x4F, nan', 0x50, 0x00, 0x00
   ]
+  where
+    nan' = unsafeCoerce nan
 
-
-z85CharToIndex :: Z85Char -> Int
-z85CharToIndex (Z85Char c) = toCharCode c - 32
 
 
 lookupBase85 :: Z85Char -> Base85
 lookupBase85 c = unsafePartial (Array.unsafeIndex charCodeToBase85 (z85CharToIndex c))
+  where
+    z85CharToIndex :: Z85Char -> Int
+    z85CharToIndex (Z85Char c') = toCharCode c' - 32
 
 
 -- | Encodes the value by extracting it out of a little-endian packed word, and packing it into five x85 chars
@@ -141,6 +155,3 @@ decodeWord chunk =
   where
     base85Values :: Vec D5 Base85
     base85Values = lookupBase85 <$> chunk
-
-
-
