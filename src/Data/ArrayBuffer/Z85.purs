@@ -29,6 +29,7 @@ encodeZ85 xs' = do
     (tmp :: Uint32Array) <- TA.toArray xs' >>= TA.fromArray
     let bits = TA.buffer tmp
     (xs'' :: Uint8Array) <- TA.whole (AB.slice 0 (AB.byteLength bits) bits)
+    -- endian reversal
     TA.reverse xs''
     TA.whole (TA.buffer xs'')
   sRef <- Ref.new "" -- result string reference
@@ -38,7 +39,8 @@ encodeZ85 xs' = do
         -- log (unsafeCoerce word)
         let word' :: Array Char
             word' = getZ85Char <$> Vec.toArray (encodeWord word)
-        void (Ref.modify (\acc -> fromChars word' <> acc) sRef)
+            go' acc = fromChars word' <> acc -- content reversal
+        void (Ref.modify go' sRef)
   TA.traverse_ go xs
   Ref.read sRef
 
@@ -48,9 +50,11 @@ decodeZ85 :: String -> Effect Uint32Array
 decodeZ85 s = do
   chunks <- asChunks s
   do  (x :: Uint32Array) <- TA.fromArray (decodeWord <$> chunks)
+      -- content reversal
       TA.reverse x
       let buff = TA.buffer x
       (tmp :: Uint8Array) <- TA.whole buff
+      -- endian reversal
       TA.reverse tmp
       TA.whole (TA.buffer tmp)
       --TA.whole buff
