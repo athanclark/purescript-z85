@@ -10,9 +10,11 @@ import Data.ArrayBuffer.Types (Uint8Array)
 import Data.ArrayBuffer.Typed (fromArray, toArray, whole, buffer)
 import Data.ArrayBuffer.Typed.Gen (genTypedArray, genUint32)
 import Data.Array ((..))
+import Data.Either (Either (..))
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Effect.Console (log)
+import Effect.Exception (throw)
 import Test.QuickCheck (quickCheck, quickCheckGen, Result, (===))
 import Test.QuickCheck.Gen (Gen)
 import Test.Assert (assertEqual)
@@ -35,7 +37,9 @@ main = do
       assertEqual {actual: xs, expected: "HelloWorld"}
 
   log "  - specification is exact, from Chars"
-  do  xs <- decodeZ85 "HelloWorld" >>= \x -> whole (buffer x) >>= \y -> toArray (y :: Uint8Array)
+  do  xs <- decodeZ85 "HelloWorld" >>= \ex -> case ex of
+        Left e -> throw e
+        Right x -> whole (buffer x) >>= \y -> toArray (y :: Uint8Array)
       assertEqual {actual: xs, expected: words}
 
   log "Generating test cases..."
@@ -60,5 +64,9 @@ sentenceTest :: Gen Result
 sentenceTest = do
   xs <- genTypedArray genUint32
   let round1 = unsafePerformEffect (encodeZ85 xs)
-      round2 = unsafePerformEffect (encodeZ85 =<< decodeZ85 round1)
+      round2 = unsafePerformEffect do
+        ex <- decodeZ85 round1
+        case ex of
+          Left e -> throw e
+          Right x -> encodeZ85 x
   pure (round1 === round2)

@@ -6,6 +6,7 @@ import Prelude
   ( bind, (<>), mod, (<$>), (/=), void, Unit, discard
   , otherwise, (==), pure, not)
 import Data.Maybe (Maybe (..))
+import Data.Either (Either (..))
 import Data.Vec (toArray, fromArray) as Vec
 import Data.UInt (UInt)
 import Data.Array (cons) as Array
@@ -17,7 +18,6 @@ import Data.String (length) as String
 import Data.String.CodeUnits (splitAt) as String
 import Effect (Effect)
 import Effect.Ref (read, modify, new) as Ref
-import Effect.Exception (throw)
 import Partial.Unsafe (unsafePartial)
 
 
@@ -40,24 +40,29 @@ encodeZ85 xs = do
   Ref.read sRef
 
 
-decodeZ85 :: String -> Effect Uint32Array
+decodeZ85 :: String -> Effect (Either String Uint32Array)
 decodeZ85 s = do
-  chunks <- asChunks s
-  do  (x :: Uint32Array) <- TA.fromArray (decodeWord <$> chunks)
+  echunks <- asChunks s
+  case echunks of
+    Left e -> pure (Left e)
+    Right chunks -> do
+      (x :: Uint32Array) <- TA.fromArray (decodeWord <$> chunks)
       TA.reverse x -- content reversal
       (tmp :: Uint8Array) <- TA.whole (TA.buffer x)
       TA.reverse tmp -- endian reversal
-      pure x
+      pure (Right x)
   where
-    asChunks :: String -> Effect (Array Z85Chunk)
+    asChunks :: String -> Effect (Either String (Array Z85Chunk))
     asChunks xs
-      | xs == "" = pure []
-      | not (inZ85Charset xs) = throw "Not in z85 character set"
-      | String.length xs `mod` 5 /= 0 = throw "Characters not a modulo of five"
+      | xs == "" = pure (Right [])
+      | not (inZ85Charset xs) = pure (Left "Not in z85 character set")
+      | String.length xs `mod` 5 /= 0 = pure (Left "Characters not a modulo of five")
       | otherwise = do
         let {before,after} = String.splitAt 5 xs
-        chunk <- case Vec.fromArray (toCharArray before) of
-          Nothing -> throw ("Can't turn array into chunk: " <> before)
-          Just x -> pure (Z85Char <$> x)
-        tail <- asChunks after
-        pure (Array.cons chunk tail)
+        case Vec.fromArray (toCharArray before) of
+          Nothing -> pure (Left ("Can't turn array into chunk: " <> before))
+          Just x -> do
+            etail <- asChunks after
+            case etail of
+              Left e -> pure (Left e)
+              Right tail -> pure (Right (Array.cons (Z85Char <$> x) tail))
