@@ -5,22 +5,18 @@ import Data.ArrayBuffer.Z85.Internal
   (encodeWord, decodeWord, lookupBase85, allZ85Chars, lookupZ85Char, Z85Char)
 
 import Prelude
-import Data.Maybe (Maybe (..))
-import Data.UInt (UInt)
 import Data.UInt as UInt
-import Data.Int (rem, toNumber)
-import Data.ArrayBuffer.Types (Uint32Array, Uint8Array)
-import Data.ArrayBuffer.Typed (fromArray, whole, buffer)
+import Data.ArrayBuffer.Types (Uint8Array)
+import Data.ArrayBuffer.Typed (fromArray, toArray, whole, buffer)
 import Data.ArrayBuffer.Typed.Gen (genTypedArray, genUint32)
-import Data.Array (dropEnd, length) as Array
 import Data.Array ((..))
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Effect.Console (log)
-import Test.QuickCheck (arbitrary, quickCheck, quickCheckGen, Result, (===))
-import Test.QuickCheck.Gen (Gen, arrayOf)
+import Test.QuickCheck (quickCheck, quickCheckGen, Result, (===))
+import Test.QuickCheck.Gen (Gen)
 import Test.Assert (assertEqual)
-import Unsafe.Coerce (unsafeCoerce)
+-- import Unsafe.Coerce (unsafeCoerce)
 
 
 main :: Effect Unit
@@ -31,12 +27,17 @@ main = do
     { actual: lookupBase85 <$> allZ85Chars
     , expected: UInt.fromInt <$> (0 .. 84)
     }
-  log "  - specification is exact"
-  (xs'' :: Uint8Array) <- fromArray (UInt.fromInt <$> [0x86,0x4F,0xD2,0x6F,0xB5,0x59,0xF7,0x5B])
-  xs <- whole (buffer xs'')
-  -- log (unsafeCoerce xs)
-  xs' <- encodeZ85 xs
-  assertEqual {actual: xs', expected: "HelloWorld"}
+
+  log "  - specification is exact, from Array of words"
+  let words = UInt.fromInt <$> [0x86,0x4F,0xD2,0x6F,0xB5,0x59,0xF7,0x5B]
+  do  (xs'' :: Uint8Array) <- fromArray words
+      xs <- whole (buffer xs'') >>= encodeZ85
+      assertEqual {actual: xs, expected: "HelloWorld"}
+
+  log "  - specification is exact, from Chars"
+  do  xs <- decodeZ85 "HelloWorld" >>= \x -> whole (buffer x) >>= \y -> toArray (y :: Uint8Array)
+      assertEqual {actual: xs, expected: words}
+
   log "Generating test cases..."
   log "  - char code / base85 mapping is isomorphic"
   quickCheck charTest
