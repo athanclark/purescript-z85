@@ -3,11 +3,11 @@ module Data.ArrayBuffer.Z85 where
 import Data.ArrayBuffer.Z85.Internal (encodeWord, decodeWord, Z85Char (..), getZ85Char, Z85Chunk)
 
 import Prelude
-import Data.Maybe (Maybe (..), fromJust)
+import Data.Maybe (Maybe (..))
 import Data.Tuple (Tuple (..))
 import Data.Vec (toArray, fromArray) as Vec
 import Data.UInt (UInt)
-import Data.Array (snoc, length, foldM) as Array
+import Data.Array (snoc, length, foldM, take, drop, cons) as Array
 import Data.Array ((..))
 import Data.ArrayBuffer.ArrayBuffer (empty) as AB
 import Data.ArrayBuffer.Types (Uint32Array, Uint32, DataView)
@@ -16,71 +16,48 @@ import Data.ArrayBuffer.DataView as DV
 import Data.String.CodeUnits (toCharArray)
 import Data.String.Yarn (fromChars)
 import Data.String (length) as String
+import Data.String.CodeUnits (splitAt) as String
 import Data.Traversable (traverse_)
 import Effect (Effect)
 import Effect.Ref as Ref
 import Effect.Exception (throw)
-import Partial.Unsafe (unsafePartial)
+-- import Partial.Unsafe (unsafePartial)
+import Unsafe.Coerce (unsafeCoerce)
+import Effect.Console (log)
 
 
 
 encodeZ85 :: Uint32Array -> Effect String
 encodeZ85 xs' = do
-  let bytes = DV.whole (TA.buffer xs')
-      len = DV.byteLength bytes
-      len' = len `div` 4
-      ns = 0 .. (len' - 1)
-  sRef <- Ref.new ""
-  let go n' = do
-        let n = n' * 4
-        mX <- DV.getUint32be bytes n
-        let word = unsafePartial (fromJust mX)
-            word' :: Array Char
+  sRef <- Ref.new "" -- result string reference
+  let go :: UInt -> Effect Unit -- takes word
+      go word = do
+        -- FIXME either reverse word, or reverse incoming array (somehow)
+        log (unsafeCoerce word)
+        let word' :: Array Char
             word' = getZ85Char <$> Vec.toArray (encodeWord word)
         void (Ref.modify (\acc -> acc <> fromChars word') sRef)
-  traverse_ go ns
+  TA.traverse_ go xs
   Ref.read sRef
 
-  --  if len == 0 then pure ""
-  --     else
-  -- let go :: String -> UInt -> TA.Offset -> String
-  --     go acc word _ =
-  -- in  TA.foldl go "" xs
 
 
 decodeZ85 :: String -> Effect Uint32Array
-decodeZ85 s =
-  if charsLen `mod` 5 /= 0
-    then throw "Serialized string is not multiple of 5"
-    else do
-      byteOffsetRef <- Ref.new 0
-      charsSoFarRef <- Ref.new []
-
-      buffer <- AB.empty bytesLen
-      let bytes :: DataView
-          bytes = DV.whole buffer
-
-          go :: Char -> Effect Unit
-          go c = do
-            charsSoFar <- Ref.modify (\cs' -> cs' `Array.snoc` Z85Char c) charsSoFarRef
-            if Array.length charsSoFar /= 5
-              then pure unit
-              else do
-                let asVec :: Z85Chunk
-                    asVec = unsafePartial $ fromJust $ Vec.fromArray charsSoFar
-
-                byteOffset <- Ref.read byteOffsetRef
-                void $ DV.setUint32be bytes byteOffset $ decodeWord asVec
-
-                Ref.write (byteOffset + 4) byteOffsetRef
-                Ref.write [] charsSoFarRef
-
-      traverse_ go cs
-      TA.whole buffer
+decodeZ85 s = do
+  chunks <- asChunks s
+  x <- TA.fromArray (decodeWord <$> chunks)
+  TA.reverse x
+  pure x
   where
-    cs :: Array Char
-    cs = toCharArray s
-
-    charsLen = String.length s
-    wordsLen = charsLen `div` 5
-    bytesLen = wordsLen * 4
+    asChunks :: String -> Effect (Array Z85Chunk)
+    asChunks xs
+      | String.length xs `mod` 5 /= 0 = throw "Characters not a modulo of five"
+      | String.length xs == 0 = pure []
+      | otherwise = do
+        let {before,after} = String.splitAt 5 xs
+        -- let chunk' = Array.take 5 xs
+        chunk <- case Vec.fromArray (toCharArray before) of
+          Nothing -> throw ("Can't turn array into chunk: " <> before)
+          Just x -> pure (Z85Char <$> x)
+        tail <- asChunks after
+        pure (Array.cons chunk tail)
