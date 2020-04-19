@@ -5,13 +5,13 @@ You can edit this file as you like.
 { name = "z85"
 , dependencies =
   [ "arraybuffer"
-  , "assert"
-  , "console"
-  , "effect"
+  , "numbers"
   , "prelude"
-  , "psci-support"
+  , "sized-vectors"
   , "stringutils"
   ]
 , packages = ./packages.dhall
-, sources = [ "src/**/*.purs", "test/**/*.purs" ]
+, sources = [ "src/**/*.purs" ]
+, license = "BSD-3-Clause"
+, repository = "https://github.com/athanclark/purescript-z85.git"
 }

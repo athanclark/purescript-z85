@@ -15,13 +15,12 @@
     "purescript-prelude": "^4.1.0",
     "purescript-arraybuffer": "^10.0.0",
     "purescript-sized-vectors": "^5.0.0",
-    "purescript-numbers": "^6.0.0",
+    "purescript-numbers": "^7.0.0",
     "purescript-stringutils": "^0.0.8"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",
     "purescript-quickcheck": "^6.1.0",
-    "purescript-base64": "purescript-base64-2#^2.0.0",
     "purescript-assert": "^4.0.0"
   }
 }
