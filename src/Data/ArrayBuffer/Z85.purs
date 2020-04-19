@@ -12,8 +12,7 @@ import Data.UInt (UInt)
 import Data.Array (cons) as Array
 import Data.ArrayBuffer.Types (Uint32Array, Uint8Array)
 import Data.ArrayBuffer.Typed as TA
-import Data.String.CodeUnits (toCharArray)
-import Data.String.Yarn (fromChars)
+import Data.String.CodeUnits (toCharArray, fromCharArray)
 import Data.String (length) as String
 import Data.String.CodeUnits (splitAt) as String
 import Effect (Effect)
@@ -34,7 +33,7 @@ encodeZ85 xs = do
           unsafePartial (TA.unsafeAt tmp 0)
         let chunk :: Array Char
             chunk = getZ85Char <$> Vec.toArray (encodeWord word)
-            go' acc = acc <> fromChars chunk -- content reversal
+            go' acc = acc <> fromCharArray chunk -- content reversal
         void (Ref.modify go' sRef)
   TA.traverse_ go xs
   Ref.read sRef

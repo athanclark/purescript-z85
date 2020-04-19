@@ -11,8 +11,7 @@ import Data.UInt (UInt, pow, zshr, (.&.))
 import Data.UInt (toInt, fromInt) as UInt
 import Data.Number (nan)
 import Data.Char (toCharCode)
-import Data.String.CodeUnits (charAt)
-import Data.String.Yarn (toChars) as String
+import Data.String.CodeUnits (charAt, toCharArray)
 import Data.String.Regex (regex, test)
 import Data.String.Regex.Flags (global)
 import Data.String.Utils (escapeRegex)
@@ -71,7 +70,7 @@ inZ85Charset = test r
 
 
 allZ85Chars :: Array Z85Char
-allZ85Chars = Z85Char <$> String.toChars z85Chars
+allZ85Chars = Z85Char <$> toCharArray z85Chars
 
 
 lookupZ85Char :: Base85 -> Z85Char
